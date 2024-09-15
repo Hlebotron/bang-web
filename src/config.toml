@@ -1,0 +1,43 @@
+#NOT YET COMPLETE (I've still got to implement all of these features written here)
+[general]
+min_players = 4
+max_players = 7
+extensions = false
+
+[gameplay]
+weapons = [
+	'Schofield',
+	'Schofield',
+	'Remington',
+	'Carabine',
+	'Winchester',
+]
+cards = [
+	['Bang', 5, 6, 2, 8],
+	['Miss', 3, 4, 9, 7]
+]
+characters = [
+	'Calamity Janet',
+	'Slab the Killer',
+	'Willy the Kid',
+	'Rose Doolan',
+	'Black Jack',
+	'Sid Ketchum',
+]
+
+[stats]
+max_health = 4
+sheriff_max_health = 5
+lower_max_health_lowering_amount = 1
+weapon_ranges = [
+	['Colt 45', 1],
+	['Volcanic', 1],
+	['Schofield', 2],
+	['Remington', 3],
+	['Carabine', 4],
+	['Winchester', 5],
+]
+
+[extensions]
+targets = []
+beer_revives = true
