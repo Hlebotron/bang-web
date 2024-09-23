@@ -9,39 +9,81 @@ use std::collections::HashSet;
 use std::str::FromStr;
 use tera::{Tera, Context};
 //use url::{Url, ParseError};
-use ws::{Handler, Factory, Sender, Handshake, Message, CloseCode, listen};
+use ws::{Handler, Factory, Sender, Handshake, Message, CloseCode, listen, WebSocket};
 use std::sync::mpsc;
 use toml::{Table, de};
 use serde::Deserialize;
 
 const PAGES_DIR: &str = "/home/sasha/Rust/bang_web/src/pages";
 const CONFIG_FILE: &str = "/home/sasha/Rust/bang_web/src/config.toml";
-const MIN_PLAYERS: u8 = 4;
-const MAX_PLAYERS: u8 = 7;
-const DEFAULT_CARDS: [(Cards, u8, u8, u8, u8); 6] = [
+const DF_MIN_PLAYERS: u8 = 4;
+const DF_MAX_PLAYERS: u8 = 7;
+const DF_CARDS: [(Cards, u8, u8, u8, u8); 22] = [
     (Cards::Bang, 1, 13, 8, 3),
     (Cards::Miss, 1, 13, 8, 3),
-    (Cards::Jail, 1, 13, 8, 3),
     (Cards::Indians, 1, 13, 8, 3),
+    (Cards::Jail, 1, 13, 8, 3),
     (Cards::Barrel, 1, 13, 8, 3),
     (Cards::Mustang, 1, 13, 8, 3),
+    (Cards::Beer, 1, 13, 8, 3),
+    (Cards::CatBalou, 1, 13, 8, 3),
+    (Cards::Duel, 1, 13, 8, 3),
+    (Cards::Gatling, 1, 13, 8, 3),
+    (Cards::Store, 1, 13, 8, 3),
+    (Cards::Panic, 1, 13, 8, 3),
+    (Cards::Saloon, 1, 13, 8, 3),
+    (Cards::Stagecoach, 1, 13, 8, 3),
+    (Cards::WellsFargo, 1, 13, 8, 3),
+    (Cards::Dynamite, 1, 13, 8, 3),
+    (Cards::Schofield, 1, 13, 8, 3),
+    (Cards::Volcanic, 1, 13, 8, 3),
+    (Cards::Remington, 1, 13, 8, 3),
+    (Cards::Carabine, 1, 13, 8, 3),
+    (Cards::Winchester, 1, 13, 8, 3),
+    (Cards::Scope, 1, 13, 8, 3),
 ];
-const DEFAULT_CHARACTERS: [Characters; 7] = [
+const DF_CHARACTERS: [Characters; 16] = [
     Characters::CalamityJanet,
-    Characters::WillyTheKid,
     Characters::SlabTheKiller,
-    Characters::RoseDoolan,
-    Characters::BlackJack,
+    Characters::WillyTheKid,
     Characters::PaulRegret,
     Characters::Jourdonnais,
+    Characters::RoseDoolan,
+    Characters::BlackJack,
+    Characters::PedroRamirez,
+    Characters::BartCassidy,
+    Characters::ElGringo,
+    Characters::JesseJones,
+    Characters::KitCarlson,
+    Characters::LuckyDuke,
+    Characters::SidKetchum,
+    Characters::SuzyLafayette,
+    Characters::VultureSam
 ];
 
+
+fn main() -> Result<(), ()> {
+    //TODO: WebSockets
+    //TODO: Implement all of the features in the config struct
+    let args: Vec<_> = args().collect();
+    let (address, port) = match set_address(args) {
+        Ok(content) => content,
+        Err(_) => {
+          Err(())
+        }?
+    };
+    let url = format!("{address}:{port}");
+    let table: Table = parse_config().expect("TOML - Could not parse\n");
+    let config = set_config(table.clone());
+    start_server(url, config)?;
+    Err(())
+}
 #[derive(Deserialize, Debug)]
 struct Config {
     general: ConfigGeneral,
     gameplay: ConfigGameplay,
-    extensions: ConfigExtensions,
     stats: ConfigStats,
+    extra: ConfigExtra,
 }
 #[derive(Deserialize, Debug)]
 struct ConfigGeneral {
@@ -61,11 +103,14 @@ struct ConfigStats {
     sheriff_max_health: Option<u8>,
     lower_max_health_lowering_amount: Option<u8>,
     weapon_ranges: Option<HashSet<(String, u8)>>,
+    mustang_extra_distance: Option<u8>,
+    scope_extra_range: Option<u8>,
 }
 #[derive(Deserialize, Debug)]
-struct ConfigExtensions {
+struct ConfigExtra {
     targets: Option<HashSet<String>>,
-    beer_revives: Option<bool>,
+    beer_revive: Option<bool>,
+    stack_mustang_and_scope: Option<bool>,
 }
 impl FromStr for Weapons {
     type Err = ();
@@ -107,7 +152,7 @@ impl FromStr for Cards {
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 enum Weapons {
     Colt45,
     Volcanic,
@@ -116,7 +161,7 @@ enum Weapons {
     Carabine,
     Winchester
 }
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 enum Characters {
     CalamityJanet,
     SlabTheKiller,
@@ -135,14 +180,14 @@ enum Characters {
     SuzyLafayette,
     VultureSam
 }
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 enum Roles {
     Outlaw,
     Sheriff,
     Renegade,
     Deputy
 }
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 enum Cards {
     Bang,
     Miss,
@@ -167,27 +212,42 @@ enum Cards {
     Winchester,
     Scope
 }
-#[derive(Deserialize, Debug, Hash, Eq, PartialEq)]
+#[derive(Deserialize, Debug, Clone)]
+enum Suits {
+    Heart,
+    Diamond,
+    Spade,
+    Club
+}
+#[derive(Deserialize, Debug, Hash, Eq, PartialEq, Clone)]
 enum Attributes {
     LowerMaxHP,
-    Barrel,
+    Barrel(u8),
     Targeted,
     Dynamite,
-    ExtraDistance,
-    ExtraRange,
+    Mustang(u8),
+    Scope,
     Jailed,
     BangSpam,
+    ExtraDistance,
+    ExtraRange
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Player {
     name: String,
-    health: i8,
+    health: u8,
     weapon: Weapons,
     character: Characters,
     role: Roles,
-    cards: Vec<Cards>,
+    upper_cards: Vec<(Cards, Suits)>,
+    lower_cards: Vec<Cards>,
     attributes: HashSet<Attributes>,
+}
+impl Player {
+    fn change_attr(self, ex_attr: Attributes, new_attr: Attributes) {
+        
+    } 
 }
 
 struct EventHandler {
@@ -196,8 +256,8 @@ struct EventHandler {
 }
 impl Handler for EventHandler {
     fn on_open(&mut self, shake: Handshake) -> Result<(), ws::Error> {
-        println!("Connection has been made, ID: {}", self.id);
-        self.ws.send("hello");
+        println!("Connection made, ID: {}", self.id);
+        self.ws.send("pogger");
         Ok(())
     } 
     fn on_message(&mut self, msg: Message) -> Result<(), ws::Error> {
@@ -223,27 +283,24 @@ impl Factory for HandlerFactory {
         handler
     }
 }
-
-fn main() -> Result<(), ()> {
-    //TODO: WebSockets
-    //TODO: Implement all of the features in the config struct
-    let args: Vec<_> = args().collect();
-    let (address, port) = match set_address(args) {
-        Ok(content) => content,
-        Err(_) => {
-          Err(())
-        }?
-    };
-    let url = format!("{address}:{port}");
-    let table: Table = parse_config().expect("TOML - Could not parse\n");
-    let config = set_config(table.clone());
-    //let general = &table["general"];
-    start_server(url, config)?;
-    Err(())
+macro_rules! remove_attr {
+    ($set:expr, $variant:pat) => {
+        {
+            let attr = $set
+                .clone()
+                .into_iter()
+                .filter(|k| matches!(k, $variant))
+                .last()
+                .unwrap();
+            let boolean = $set.remove(&attr);
+            ($set, attr)
+        }
+    }
 }
 fn start_server(url: String, config: Config) -> Result<(), ()> {
     let server = Server::http(&url).expect("TinyHTTP - Could not start server");
     println!("Server running at {}", &url);
+    let ws = WebSocket::new(HandlerFactory{id: 1}).unwrap();
     thread::scope(|s| {
         s.spawn(move || {
             loop {
@@ -289,17 +346,18 @@ fn start_server(url: String, config: Config) -> Result<(), ()> {
             }
         });
         s.spawn(move || {
-           listen("192.168.1.248:6970", |out| {
-                println!("Connection received");
-                move |msg| {
-                    out.send("pog")
-                }
-           }); 
+           ws.listen("192.168.64.169:6970").unwrap();
         });
         s.spawn(move || {
-            println!("{:?}", config.gameplay.cards);
-            let mut player1 = Player {name: "pogger".to_string(), role: Roles::Deputy, health: 1i8, character: Characters::SlabTheKiller, weapon: Weapons::Schofield, cards: vec![Cards::Bang], attributes: HashSet::new()};
-            player1.attributes.insert(Attributes::ExtraDistance);
+            let mut player1 = Player {name: "pogger".to_string(), role: Roles::Deputy, health: 1u8, character: Characters::SlabTheKiller, weapon: Weapons::Schofield, upper_cards: vec![(Cards::Bang, Suits::Club)], lower_cards: vec![Cards::Mustang], attributes: HashSet::new()};
+            player1.attributes.insert(Attributes::Mustang(3));
+            println!("{:?}", player1);
+            let (set, removed) = remove_attr!(player1.attributes, Attributes::Mustang(u8));
+            player1.attributes = set;
+            if let Attributes::Mustang(num) = removed {
+                player1.attributes.insert(Attributes::Mustang(num + 1));
+            };
+            //player1.attributes.insert(Attributes::Mustang(num + 1));
             println!("{:?}", player1);
         });
     });
@@ -343,7 +401,6 @@ fn read_file(file_name: &str) -> String {
     content
 }
 fn override_file(file_name: &str, content: String) {
-    //let file = File::options().write(true).open(&file(file_name)); 
     fs::write(&file(file_name), content.as_bytes());
 }
 fn append_to_file(file_name: &str, content: String) {
@@ -395,6 +452,5 @@ fn set_config(table: Table) -> Config {
         "".to_string()
     });
     let config = toml::from_str::<Config>(&content).unwrap();
-    println!("{:?}", config);
     config
 }

@@ -37,7 +37,10 @@ weapon_ranges = [
 	['Carabine', 4],
 	['Winchester', 5],
 ]
+mustang_extra_distance = 1
+scope_extra_range = 1
 
-[extensions]
+[extra]
 targets = []
-beer_revives = true
+beer_revive = true
+stack_mustang_and_scope = true
