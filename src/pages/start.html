@@ -1,0 +1,8 @@
+<h1>Bang {{ pog }}</h1>
+<div id="div">
+	<form hx-post="/enterGame" hx-target="#content">
+		<input name="name">
+		<input type="submit" value="{{submit}}">
+	</form>
+	<button hx-get="/pog" hx-on:click="alert('pogger')">pogger</button>
+</div>

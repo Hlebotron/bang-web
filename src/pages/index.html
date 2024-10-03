@@ -3,7 +3,33 @@
 	<head>
 		<title>Bang</title>
 		<script src="/htmx"></script>
+		<script src="/ws.js"></script>
+		<script>
+			function pog() {
+				return 5;
+			}
+			function amogus() {
+				return "/sus";
+			}
+			let host = window.location.hostname;		
+			let port = Number(location.port) + 1;
+			let wsUrl = `ws://${host}:${port}`;
+			let ws = new WebSocket(wsUrl);
+			ws.onmessage = (message) => {
+				console.log(message);
+			};
+		</script>
 		<style>
+			body {
+				background-image: url("background");
+				background-position: center;
+				background-repeat: no-repeat;
+				/*background-size: auto 100vh;*/
+			}
+			html {
+				height: 100vh;
+				width: 100%;
+			}
 			.playerIcon {
 				background-color: red;
 				width: 100px;
@@ -21,22 +47,9 @@
 			}
 		</style>
 	</head>
-	<body>
-		<h1>Bang {{ pog }}</h1>
-		<div id="div">
-			<form hx-post="/enterGame" hx-target="body">
-				<input name="name">
-				<input type="submit" value="{{submit}}">
-			</form>
-			<button hx-get="/pog">pogger</button>
-		</div>
+	
+	<body hx-trigger="load" hx-post="/start" hx-vals='js:{id: pog()}' hx-ext="ws" hx-target="#content">
+		<div id="content"></div>
 	</body>
-	<script>
-		
-		let ws = new WebSocket("ws://192.168.1.248:6970");
-		ws.onmessage = (message) => {
-			console.log(message);
-		};
-	</script>
 </html>
 
